@@ -43,7 +43,8 @@ print(r[1])"
 - `app.py` — UI 定義と処理の両方。`_model` / `_stt` はモジュールグローバルの遅延シングルトン（`get_model()` / `get_stt()` 経由でのみ触る）
 - `theme.py` — 配色トークン、`build_theme()`、`CSS`、`HEADER_HTML`、`step_html()`。機能側からは表示にしか使われないので、まるごと差し替えても生成処理は壊れない
 - `model.generate()` はジェネレータで `GenerationResult` を yield する。音声は `result.audio`（`mx.array`）なので `np.asarray(...)` で変換してから連結する
-- `synthesize()` の戻り値は `(sample_rate, audio), 保存パス, 結果カードの HTML` の 3 つ組。3 番目は `gr.HTML` に流し込む前提の文字列で、`theme.py` の `.result-card` 系 CSS に依存している
+- `synthesize()` の戻り値は `(sample_rate, audio), 保存パス, 結果カードの HTML, 等倍の生データ` の 4 つ組。3 番目は `gr.HTML` に流し込む前提の文字列で、`theme.py` の `.result-card` 系 CSS に依存している。4 番目は `gr.State` に入り、`apply_speed()` が TTS を再実行せず速度だけ掛け直すために使う
+- 保存とカード生成は `_finalize()` に集約してある。速度の適用・ファイル名の接尾辞・メトリクス表示はすべてここを通る
 
 ## 規約・地雷
 
@@ -53,6 +54,8 @@ print(r[1])"
 - ICL モードは**テキストを分割しない**。長文をそのまま渡すと 1 回の生成で処理される。`app.py` 側で `split_text()` してチャンクごとに `generate()` を呼び、無音を挟んで結合しているのはこの穴を埋めるため。`split_pattern=None` を渡しているのは mlx-audio 側の二重分割を避けるため
 - ICL モードでは `repetition_penalty` に `max(値, 1.5)` が適用される。UI で 1.0 にしても 1.5 として扱われる
 - 参照音声と参照テキストの組は mlx-audio 内部でキャッシュされる。参照テキストを書き換えると再エンコードが走る
+- `generate(speed=...)` は Qwen3-TTS では**効かない**（mlx-audio の docstring に "not directly supported yet"、`_generate_icl` にも渡っていない）。話速は `change_speed()` の WSOLA で生成後に伸縮している。ここをリサンプリングに置き換えると声の高さまで変わるので不可
+- RTF は速度適用**前**の長さで計算する。速度を掛けた後の長さで割ると生成コストの指標にならない
 
 **Gradio 6 固有**
 

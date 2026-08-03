@@ -59,6 +59,7 @@ _ICON_PATHS = {
         "<path d='M10 11v6'/><path d='M14 11v6'/>"
     ),
     "play": "<path d='M6 4.5v15l13-7.5Z'/>",
+    "speed": "<path d='m12 14 4-4'/><path d='M3.34 19a10 10 0 1 1 17.32 0'/>",
     "check": (
         "<path d='M22 11.1V12a10 10 0 1 1-5.9-9.1'/><path d='m9 11 3 3 10-10'/>"
     ),
@@ -254,14 +255,17 @@ body, gradio-app {{
 /* ---------- ボタン ---------- */
 .gradio-container button {{ cursor:pointer; transition: filter .2s ease, background-color .2s ease, border-color .2s ease; }}
 button.ic-mic, button.ic-captions, button.ic-save, button.ic-folder,
-button.ic-trash, button.ic-play, .ic-mic > button, .ic-captions > button,
-.ic-save > button, .ic-folder > button, .ic-trash > button, .ic-play > button {{
+button.ic-trash, button.ic-play, button.ic-speed, .ic-mic > button, .ic-captions > button,
+.ic-save > button, .ic-folder > button, .ic-trash > button, .ic-play > button,
+.ic-speed > button {{
   display:inline-flex !important; align-items:center; justify-content:center; gap:8px;
 }}
 button.ic-mic::before, button.ic-captions::before, button.ic-save::before,
 button.ic-folder::before, button.ic-trash::before, button.ic-play::before,
+button.ic-speed::before,
 .ic-mic > button::before, .ic-captions > button::before, .ic-save > button::before,
-.ic-folder > button::before, .ic-trash > button::before, .ic-play > button::before {{
+.ic-folder > button::before, .ic-trash > button::before, .ic-play > button::before,
+.ic-speed > button::before {{
   content:""; width:16px; height:16px; flex:none;
   background-color: currentColor;
   -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;

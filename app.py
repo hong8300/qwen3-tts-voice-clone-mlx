@@ -102,6 +102,57 @@ def split_text(text: str, max_chars: int) -> list[str]:
 
 
 # --------------------------------------------------------------------------
+# 再生速度（WSOLA によるピッチ保持のテンポ変更）
+# --------------------------------------------------------------------------
+def change_speed(audio: np.ndarray, speed: float, sample_rate: int) -> np.ndarray:
+    """速度を変える。speed<1 で遅く、>1 で速くなる。ピッチは変わらない。
+
+    Qwen3-TTS 側に速度指定が無いため生成後に伸縮する。単純なリサンプリングだと
+    声の高さまで変わってしまうので、波形の周期に合わせて重ね合わせる WSOLA を使う。
+    """
+    if abs(speed - 1.0) < 1e-3 or len(audio) == 0:
+        return audio.astype(np.float32)
+
+    frame = int(sample_rate * 0.040)  # 40ms の分析窓
+    hop_out = frame // 2  # 出力側ホップ（50% オーバーラップ）
+    hop_in = max(1, int(round(hop_out * speed)))  # 入力側ホップ
+    search = int(sample_rate * 0.010)  # 前フレームとの整合を探す幅（±10ms）
+    overlap = frame - hop_out
+    window = np.hanning(frame).astype(np.float32)
+
+    x = np.concatenate(
+        [audio.astype(np.float32), np.zeros(frame + search + hop_in, np.float32)]
+    )
+    out_len = int(len(audio) / speed) + 2 * frame
+    out = np.zeros(out_len, np.float32)
+    norm = np.zeros(out_len, np.float32)
+
+    pos_in = pos_out = 0
+    tail = None
+    while pos_in + frame + search < len(x) and pos_out + frame < out_len:
+        if tail is None:
+            best = pos_in
+        else:
+            # 直前フレームの後半と最も似た位置を探し、位相のずれによる濁りを防ぐ
+            lo = max(0, pos_in - search)
+            hi = min(len(x) - frame, pos_in + search)
+            if hi <= lo:
+                best = min(pos_in, len(x) - frame)
+            else:
+                seg = x[lo : hi + overlap]
+                best = lo + int(np.argmax(np.correlate(seg, tail, mode="valid")))
+        out[pos_out : pos_out + frame] += x[best : best + frame] * window
+        norm[pos_out : pos_out + frame] += window
+        tail = x[best + hop_out : best + hop_out + overlap]
+        pos_out += hop_out
+        pos_in += hop_in
+
+    end = pos_out + frame
+    norm[:end][norm[:end] < 1e-6] = 1.0
+    return (out[:end] / norm[:end]).astype(np.float32)
+
+
+# --------------------------------------------------------------------------
 # 文字起こし
 # --------------------------------------------------------------------------
 def transcribe(ref_audio: str | None) -> str:
@@ -130,6 +181,7 @@ def synthesize(
     chunk_chars: int,
     pause_sec: float,
     seed: int,
+    speed: float = 1.0,
     progress=gr.Progress(),
 ):
     if not ref_audio:
@@ -181,25 +233,49 @@ def synthesize(
 
     audio = np.concatenate(audio_parts)
     elapsed = time.time() - t0
-    duration = len(audio) / sample_rate
+    raw_duration = len(audio) / sample_rate
 
-    out_path = OUTPUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}.wav"
-    sf.write(out_path, audio, sample_rate)
-
-    metrics = [
-        (f"{duration:.1f}s", "音声の長さ"),
+    extra = [
         (f"{elapsed:.1f}s", "生成時間"),
-        (f"{elapsed / duration:.2f}", "RTF"),
+        (f"{elapsed / raw_duration:.2f}", "RTF"),
         (str(len(chunks)), "チャンク"),
         (str(total_tokens), "トークン"),
     ]
+    return (*_finalize(audio, sample_rate, speed, extra), (sample_rate, audio))
+
+
+def _finalize(
+    audio: np.ndarray,
+    sample_rate: int,
+    speed: float,
+    extra_metrics: list[tuple[str, str]] | None = None,
+    head: str = "生成が完了しました",
+):
+    """速度を適用して WAV に保存し、(音声, 保存パス, 結果カード HTML) を返す。"""
+    out = change_speed(audio, float(speed), sample_rate)
+    duration = len(out) / sample_rate
+
+    suffix = "" if abs(speed - 1.0) < 1e-3 else f"_x{speed:.2f}"
+    out_path = OUTPUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}{suffix}.wav"
+    sf.write(out_path, out, sample_rate)
+
+    metrics = [(f"{duration:.1f}s", "音声の長さ"), (f"{speed:.2f}x", "再生速度")]
+    metrics += extra_metrics or []
     cells = "".join(f"<div><b>{v}</b><span>{k}</span></div>" for v, k in metrics)
     info = (
-        '<div class="result-card"><div class="result-head">生成が完了しました</div>'
+        f'<div class="result-card"><div class="result-head">{head}</div>'
         f'<div class="result-metrics">{cells}</div>'
         f'<div class="result-path">{escape(str(out_path))}</div></div>'
     )
-    return (sample_rate, audio), str(out_path), info
+    return (sample_rate, out), str(out_path), info
+
+
+def apply_speed(raw, speed: float):
+    """生成済みの音声に速度だけ掛け直す（TTS は再実行しない）。"""
+    if not raw:
+        raise gr.Error("先に音声を生成してください。")
+    sample_rate, audio = raw
+    return _finalize(audio, sample_rate, speed, head="速度を変更しました")
 
 
 # --------------------------------------------------------------------------
@@ -315,6 +391,14 @@ with gr.Blocks(title="Voice Clone Studio — Qwen3-TTS") as demo:
             lang = gr.Dropdown(
                 label="言語", choices=LANGUAGES, value="auto", filterable=False
             )
+            speed = gr.Slider(
+                0.5,
+                2.0,
+                value=1.0,
+                step=0.05,
+                label="再生速度",
+                info="0.9 でゆっくり、1.2 で速く。声の高さは変わりません。",
+            )
             run_btn = gr.Button(
                 "生成する", variant="primary", size="lg", elem_classes=["cta", "ic-play"]
             )
@@ -322,8 +406,12 @@ with gr.Blocks(title="Voice Clone Studio — Qwen3-TTS") as demo:
             out_audio = gr.Audio(
                 label="生成された音声", type="numpy", autoplay=False, elem_classes="slim"
             )
+            speed_btn = gr.Button(
+                "速度だけ変えて出力し直す", size="sm", elem_classes="ic-speed"
+            )
             out_file = gr.File(label="ダウンロード", elem_classes="slim")
             out_info = gr.HTML()
+            raw_audio_state = gr.State()
 
     with gr.Accordion("詳細設定", open=False):
         with gr.Row():
@@ -354,8 +442,13 @@ with gr.Blocks(title="Voice Clone Studio — Qwen3-TTS") as demo:
         synthesize,
         inputs=[
             ref_audio, ref_text, text, lang, temperature, top_k, top_p,
-            repetition_penalty, max_tokens, chunk_chars, pause_sec, seed,
+            repetition_penalty, max_tokens, chunk_chars, pause_sec, seed, speed,
         ],
+        outputs=[out_audio, out_file, out_info, raw_audio_state],
+    )
+    speed_btn.click(
+        apply_speed,
+        inputs=[raw_audio_state, speed],
         outputs=[out_audio, out_file, out_info],
     )
 
