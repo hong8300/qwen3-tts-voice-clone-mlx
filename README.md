@@ -2,6 +2,8 @@
 
 [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) をローカル（Apple Silicon）で動かす、**ボイスクローン専用**の Gradio UI です。参照音声をアップロードするだけで、その声で任意のテキストを読み上げます。クラウドへの送信は一切ありません。
 
+![Voice Clone Studio](docs/screenshot.png)
+
 - モデル: `mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit`（8bit 量子化 / 約 3.1GB）
 - 推論: [mlx-audio](https://github.com/Blaizzy/mlx-audio)（Apple Silicon の MLX 上で動作）
 - 対応言語: 日本語・英語・中国語・韓国語・ドイツ語・フランス語・イタリア語・スペイン語・ポルトガル語・ロシア語
@@ -17,7 +19,7 @@
 ## セットアップ
 
 ```bash
-git clone https://github.com/<your-account>/qwen3-tts-voice-clone-mlx.git
+git clone https://github.com/hong8300/qwen3-tts-voice-clone-mlx.git
 cd qwen3-tts-voice-clone-mlx
 
 # uv を使う場合
@@ -126,6 +128,18 @@ http://127.0.0.1:7860 が自動で開きます。停止は `Ctrl+C`。
 ```bash
 QWEN3_TTS_HOST=0.0.0.0 ./run.sh
 ```
+
+## 構成
+
+| ファイル | 役割 |
+| --- | --- |
+| `app.py` | Gradio UI と生成処理 |
+| `theme.py` | 配色・CSS・アイコン（見た目のみ。書き換えても機能には影響しない） |
+| `run.sh` | 起動スクリプト |
+| `outputs/` | 生成音声の保存先（Git 管理外） |
+| `voices/` | 音声ライブラリの保存先（Git 管理外） |
+
+配色を変えたい場合は `theme.py` 冒頭のカラートークン（`BG` / `ACCENT` など）を書き換えてください。
 
 ## 性能（M1 Max / 32GB 実測）
 

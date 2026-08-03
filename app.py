@@ -8,12 +8,15 @@ import re
 import time
 import unicodedata
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 import gradio as gr
 import mlx.core as mx
 import numpy as np
 import soundfile as sf
+
+from theme import CSS, HEADER_HTML, build_theme, step_html
 
 MODEL_ID = os.environ.get("QWEN3_TTS_MODEL", "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-8bit")
 STT_MODEL_ID = os.environ.get(
@@ -183,10 +186,18 @@ def synthesize(
     out_path = OUTPUT_DIR / f"{datetime.now():%Y%m%d-%H%M%S}.wav"
     sf.write(out_path, audio, sample_rate)
 
+    metrics = [
+        (f"{duration:.1f}s", "音声の長さ"),
+        (f"{elapsed:.1f}s", "生成時間"),
+        (f"{elapsed / duration:.2f}", "RTF"),
+        (str(len(chunks)), "チャンク"),
+        (str(total_tokens), "トークン"),
+    ]
+    cells = "".join(f"<div><b>{v}</b><span>{k}</span></div>" for v, k in metrics)
     info = (
-        f"✅ {duration:.1f} 秒の音声を生成 / 所要 {elapsed:.1f} 秒 "
-        f"(RTF {elapsed / duration:.2f}, {len(chunks)} チャンク, {total_tokens} トークン)\n"
-        f"保存先: {out_path}"
+        '<div class="result-card"><div class="result-head">生成が完了しました</div>'
+        f'<div class="result-metrics">{cells}</div>'
+        f'<div class="result-path">{escape(str(out_path))}</div></div>'
     )
     return (sample_rate, audio), str(out_path), info
 
@@ -240,57 +251,79 @@ def delete_voice(slug: str):
 # --------------------------------------------------------------------------
 # UI
 # --------------------------------------------------------------------------
-with gr.Blocks(title="Qwen3-TTS Voice Clone") as demo:
-    gr.Markdown(
-        f"""# 🎙️ Qwen3-TTS ボイスクローン
-`{MODEL_ID}` / Apple Silicon (MLX)
+with gr.Blocks(title="Voice Clone Studio — Qwen3-TTS") as demo:
+    gr.HTML(HEADER_HTML)
 
-**使い方** — ①参照音声をアップロード（3〜10秒程度のクリアな音声）→ ②その音声の内容を
-参照テキストに入力（「自動文字起こし」でも可）→ ③読み上げたいテキストを入力 → ④生成。
-"""
-    )
-
-    with gr.Row():
-        with gr.Column(scale=1):
-            gr.Markdown("### 1. 参照音声（クローン元）")
+    with gr.Row(equal_height=False):
+        with gr.Column(scale=1, elem_classes="studio-panel"):
+            gr.HTML(
+                step_html(
+                    "1",
+                    "参照音声（クローン元）",
+                    "3〜10 秒程度、雑音・BGM のないクリアな音声が最適です。",
+                )
+            )
             ref_audio = gr.Audio(
                 label="参照音声をアップロード / 録音",
                 sources=["upload", "microphone"],
                 type="filepath",
             )
+            gr.HTML(
+                step_html(
+                    "2",
+                    "参照テキスト",
+                    "参照音声で実際に話している内容。精度に直結します。",
+                )
+            )
             ref_text = gr.Textbox(
-                label="参照テキスト（参照音声で実際に話している内容）",
+                label="参照テキスト",
                 lines=3,
                 placeholder="例：こんにちは、今日はいい天気ですね。",
-                info="精度に直結します。正確に入力してください。",
+                info="難読な固有名詞はひらがなで書くと読みが安定します。",
             )
-            stt_btn = gr.Button("🎧 自動文字起こし（Whisper）", size="sm")
+            stt_btn = gr.Button(
+                "自動文字起こし（Whisper）", size="sm", elem_classes="ic-captions"
+            )
 
             with gr.Accordion("音声ライブラリ（保存して再利用）", open=False):
-                voice_name = gr.Textbox(label="名前", placeholder="例：田中さん")
-                save_btn = gr.Button("💾 現在の参照音声を保存", size="sm")
+                voice_name = gr.Textbox(label="名前", placeholder="例：ナレーターA")
+                save_btn = gr.Button(
+                    "現在の参照音声を保存", size="sm", elem_classes="ic-save"
+                )
                 voice_select = gr.Dropdown(
                     label="保存済みの音声", choices=list_voices(), value=None
                 )
                 with gr.Row():
-                    load_btn = gr.Button("📂 読み込み", size="sm")
-                    del_btn = gr.Button("🗑️ 削除", size="sm", variant="stop")
+                    load_btn = gr.Button("読み込み", size="sm", elem_classes="ic-folder")
+                    del_btn = gr.Button(
+                        "削除", size="sm", variant="stop", elem_classes="ic-trash"
+                    )
 
-        with gr.Column(scale=1):
-            gr.Markdown("### 2. 読み上げるテキスト")
+        with gr.Column(scale=1, elem_classes="studio-panel"):
+            gr.HTML(
+                step_html(
+                    "3",
+                    "読み上げるテキスト",
+                    "長文は自動で分割して生成し、つなげて出力します。",
+                )
+            )
             text = gr.Textbox(
                 label="テキスト",
                 lines=10,
-                placeholder="ここに読み上げたい文章を入力します。長文は自動で分割されます。",
+                placeholder="ここに読み上げたい文章を入力します。",
             )
             lang = gr.Dropdown(
                 label="言語", choices=LANGUAGES, value="auto", filterable=False
             )
-            run_btn = gr.Button("🔊 生成", variant="primary", size="lg")
+            run_btn = gr.Button(
+                "生成する", variant="primary", size="lg", elem_classes=["cta", "ic-play"]
+            )
 
-            out_audio = gr.Audio(label="生成された音声", type="numpy", autoplay=False)
-            out_file = gr.File(label="ダウンロード")
-            out_info = gr.Markdown()
+            out_audio = gr.Audio(
+                label="生成された音声", type="numpy", autoplay=False, elem_classes="slim"
+            )
+            out_file = gr.File(label="ダウンロード", elem_classes="slim")
+            out_info = gr.HTML()
 
     with gr.Accordion("詳細設定", open=False):
         with gr.Row():
@@ -327,11 +360,14 @@ with gr.Blocks(title="Qwen3-TTS Voice Clone") as demo:
     )
 
 
+LAUNCH_KWARGS = dict(theme=build_theme(), css=CSS)
+
+
 if __name__ == "__main__":
     if os.environ.get("QWEN3_TTS_PRELOAD", "1") == "1":
         get_model()
     demo.launch(
-        theme=gr.themes.Soft(),
+        **LAUNCH_KWARGS,
         server_name=os.environ.get("QWEN3_TTS_HOST", "127.0.0.1"),
         server_port=int(os.environ.get("QWEN3_TTS_PORT", "7860")),
         inbrowser=True,
