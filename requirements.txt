@@ -1,0 +1,8 @@
+gradio==6.22.0
+mlx==0.32.0
+mlx-audio==0.4.7
+mlx-lm==0.31.3
+numpy==2.5.1
+scipy==1.18.0
+soundfile==0.14.0
+transformers==5.14.1

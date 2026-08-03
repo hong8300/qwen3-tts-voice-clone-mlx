@@ -1,0 +1,16 @@
+# 仮想環境
+.venv/
+
+# 生成物・ユーザーデータ（音声は個人情報になりうるためコミットしない）
+outputs/
+voices/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# エディタ・OS・ローカル設定
+.claude/
+.DS_Store
+.vscode/
+.idea/
