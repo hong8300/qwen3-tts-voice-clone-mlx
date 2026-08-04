@@ -50,12 +50,38 @@ _stt = None
 # --------------------------------------------------------------------------
 # モデル読み込み
 # --------------------------------------------------------------------------
+def _register_qwen3_tts_config() -> None:
+    """transformers に無い model_type `qwen3_tts` を登録する。
+
+    mlx-audio は post_load_hook で AutoTokenizer.from_pretrained() を呼ぶ。その中で
+    AutoConfig が qwen3_tts を解決できず基底クラス PreTrainedConfig に落ちるため
+    「You are using a model of type `qwen3_tts` to instantiate a model of type ``」
+    という警告が出る。トークナイザ自体は tokenizer_config.json の Qwen2Tokenizer が
+    使われるので実害は無いが、型だけ登録しておけば解決が成功して警告も出ない。
+    transformers が正式対応したら登録しない（本物の設定クラスを隠さないため）。
+    呼ぶのは mlx_audio を import した後。mlx_audio/__init__.py が
+    TRANSFORMERS_NO_ADVISORY_WARNINGS を立てているので、先に transformers を
+    import すると別の助言警告（PyTorch was not found）が漏れる。
+    """
+    from transformers import AutoConfig, PretrainedConfig
+    from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
+
+    if "qwen3_tts" in CONFIG_MAPPING_NAMES:
+        return
+
+    class Qwen3TTSConfig(PretrainedConfig):
+        model_type = "qwen3_tts"
+
+    AutoConfig.register("qwen3_tts", Qwen3TTSConfig, exist_ok=True)
+
+
 def get_model():
     global _model
     if _model is None:
         print(f"[load] TTS model: {MODEL_ID}")
         from mlx_audio.tts.utils import load_model
 
+        _register_qwen3_tts_config()
         t0 = time.time()
         _model = load_model(MODEL_ID)
         print(f"[load] done in {time.time() - t0:.1f}s")
@@ -459,9 +485,14 @@ LAUNCH_KWARGS = dict(theme=build_theme(), css=CSS)
 if __name__ == "__main__":
     if os.environ.get("QWEN3_TTS_PRELOAD", "1") == "1":
         get_model()
+    host = os.environ.get("QWEN3_TTS_HOST", "127.0.0.1")
+    port = int(os.environ.get("QWEN3_TTS_PORT", "7860"))
+    print(f"[serve] http://{host}:{port}")
+    # quiet=True は共有リンクの案内を消すためだが、URL 表示も一緒に消えるので自前で出す
     demo.launch(
         **LAUNCH_KWARGS,
-        server_name=os.environ.get("QWEN3_TTS_HOST", "127.0.0.1"),
-        server_port=int(os.environ.get("QWEN3_TTS_PORT", "7860")),
+        server_name=host,
+        server_port=port,
         inbrowser=True,
+        quiet=True,
     )

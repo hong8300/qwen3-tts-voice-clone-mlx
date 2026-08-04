@@ -62,6 +62,12 @@ print(r[1])"
 - `panel` は予約クラス名で、`elem_classes="panel"` を指定しても DOM から除去される。独自クラスは `studio-` 接頭辞をつける
 - `css` / `js` / `theme` は `Blocks()` ではなく `launch()` に渡す。`app.LAUNCH_KWARGS` にまとめてあるので、別ポートで起動するときもこれを展開して渡す
 - `gr.themes.Base.set()` は存在しないキーワードを渡すと `TypeError`。`*_dark` が無い変数もあるため、`build_theme()` はシグネチャと突き合わせてから渡している
+- 起動ログの `To create a public link, ...` は警告ではなく `share=False` のときの案内。`launch(quiet=True)` で消せるが URL 表示も消えるので、`app.py` 側で `[serve] http://...` を自前で出している
+
+**transformers**
+
+- transformers は `model_type: qwen3_tts` を知らない。mlx-audio が `AutoTokenizer.from_pretrained()` を呼ぶと `AutoConfig` の解決に失敗して基底クラスに落ち、型不一致の警告が出る。トークナイザは `tokenizer_config.json` の `Qwen2Tokenizer` が使われるので実害は無いが、`get_model()` の `_register_qwen3_tts_config()` で型だけ登録して黙らせている。transformers が正式対応したら登録をスキップする
+- `transformers` を `mlx_audio` より先に import しない。`mlx_audio/__init__.py` が `TRANSFORMERS_NO_ADVISORY_WARNINGS` を立てているので、順序を逆にすると `PyTorch was not found` の助言警告が漏れる
 
 **日本語テキスト**
 
