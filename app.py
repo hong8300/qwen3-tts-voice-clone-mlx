@@ -95,6 +95,12 @@ def get_stt():
         from mlx_audio.stt import load as load_stt_model
 
         _stt = load_stt_model(STT_MODEL_ID)
+        # Whisper のトークナイザは BPE なので、transformers はモデル設定の
+        # clean_up_tokenization_spaces=True を無視したうえで decode 時に警告を出す。
+        # どのみち無視される値なので False にしても文字起こし結果は変わらない。
+        processor = getattr(_stt, "_processor", None)
+        if processor is not None:
+            processor.tokenizer.clean_up_tokenization_spaces = False
     return _stt
 
 

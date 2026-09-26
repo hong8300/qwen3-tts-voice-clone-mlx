@@ -68,6 +68,8 @@ print(r[1])"
 
 - transformers は `model_type: qwen3_tts` を知らない。mlx-audio が `AutoTokenizer.from_pretrained()` を呼ぶと `AutoConfig` の解決に失敗して基底クラスに落ち、型不一致の警告が出る。トークナイザは `tokenizer_config.json` の `Qwen2Tokenizer` が使われるので実害は無いが、`get_model()` の `_register_qwen3_tts_config()` で型だけ登録して黙らせている。transformers が正式対応したら登録をスキップする
 - `transformers` を `mlx_audio` より先に import しない。`mlx_audio/__init__.py` が `TRANSFORMERS_NO_ADVISORY_WARNINGS` を立てているので、順序を逆にすると `PyTorch was not found` の助言警告が漏れる
+- Whisper のトークナイザは BPE のため、モデル設定の `clean_up_tokenization_spaces=True` を transformers が無視し、decode のたびに警告を出す。`get_stt()` でロード後に `False` にして黙らせている（無視される値なので結果は変わらない）
+- huggingface_hub 2.0 は入れられない。transformers と gradio が `huggingface-hub<2.0` を要求しているため。両方が 2.0 に対応するまで venv は 1.x のまま
 
 **日本語テキスト**
 
